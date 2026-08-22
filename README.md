@@ -33,7 +33,35 @@ A user's file is handled by the application and then stored in HDFS. HDFS manage
 This allows StorageHive to demonstrate how a real file-management product can be built on top of a distributed filesystem.
 
 ---
+## Purpose
 
+StorageHive is built to explore how a cloud-style file storage system can be designed using **distributed storage instead of relying on a single server**.
+
+The project combines a practical file-management application with a multi-node Hadoop HDFS cluster to demonstrate concepts such as **distributed storage, block replication, fault tolerance, scalability, and cluster monitoring**.
+
+The goal is to understand how the user-facing application and the underlying distributed infrastructure work together as a complete system.
+
+---
+
+## How It Works
+
+```text
+                    StorageHive
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+         User Application       Admin Dashboard
+              │                     │
+              └──────────┬──────────┘
+                         │
+                    Backend API
+                    /          \
+                   /            \
+            PostgreSQL          HDFS
+             Metadata            │
+                         ┌───────┼───────┐
+                         ▼       ▼       ▼
+                       DN-1    DN-2    DN-3
 ## 2. What Does the User See?
 
 From a user's perspective, StorageHive works like a cloud file-storage application.
