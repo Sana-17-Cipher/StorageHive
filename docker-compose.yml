@@ -1,0 +1,37 @@
+# Create four separate containers and put them on the same private network.
+services:
+
+  namenode:
+    build: ./namenode
+    container_name: mini-hadoop-namenode
+    networks:
+      - hadoop-network
+
+  datanode1:
+    build: ./datanode
+    container_name: mini-hadoop-datanode1
+    environment:
+      - NODE_ID=datanode1
+    networks:
+      - hadoop-network
+
+  datanode2:
+    build: ./datanode
+    container_name: mini-hadoop-datanode2
+    environment:
+      - NODE_ID=datanode2
+    networks:
+      - hadoop-network
+
+  datanode3:
+    build: ./datanode
+    container_name: mini-hadoop-datanode3
+    environment:
+      - NODE_ID=datanode3
+    networks:
+      - hadoop-network
+
+networks:
+  hadoop-network:
+    driver: bridge
+
