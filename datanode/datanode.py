@@ -2,14 +2,12 @@ import os
 import time
 import urllib.request
 
-
 node_id = os.getenv("NODE_ID", "unknown")
-namenode_url = "http://namenode:8000/register" # Docker's network allows containers to find each other using their service names.
+namenode_url = "http://namenode:8000"
 
-# Make DataNodes register themselves
 
-def register():
-    url = f"{namenode_url}?node_id={node_id}"
+def send_request(endpoint):
+    url = f"{namenode_url}{endpoint}?node_id={node_id}"
 
     request = urllib.request.Request(
         url,
@@ -17,19 +15,29 @@ def register():
     )
 
     with urllib.request.urlopen(request) as response:
-        print(response.read().decode())
+        return response.read().decode()
 
 
 print(f"{node_id} started")
 
+# Register with NameNode
 while True:
     try:
-        register()
+        response = send_request("/register")
         print(f"{node_id} registered with NameNode")
+        print(response)
         break
     except Exception:
         print(f"{node_id}: NameNode not ready, retrying...")
         time.sleep(3)
 
+
+# Send heartbeat every 5 seconds
 while True:
-    time.sleep(10)
+    try:
+        response = send_request("/heartbeat")
+        print(f"{node_id} heartbeat sent")
+    except Exception as error:
+        print(f"{node_id}: heartbeat failed - {error}")
+
+    time.sleep(5)
