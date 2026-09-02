@@ -4,6 +4,8 @@ services:
   namenode:
     build: ./namenode
     container_name: mini-hadoop-namenode
+    ports:
+      - "8000:8000"
     networks:
       - hadoop-network
 
