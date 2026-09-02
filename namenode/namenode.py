@@ -1,17 +1,22 @@
 from fastapi import FastAPI
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
+import time
 
 app = FastAPI(title="Mini Hadoop NameNode")
 
 registered_nodes = {}
+HEARTBEAT_TIMEOUT = 10
 
 
 @app.post("/register")
 def register_node(node_id: str):
+    now = datetime.now()
+
     registered_nodes[node_id] = {
         "node_id": node_id,
-        "registered_at": datetime.now().isoformat(),
-        "last_heartbeat": datetime.now().isoformat(),
+        "registered_at": now.isoformat(),
+        "last_heartbeat": now.isoformat(),
         "status": "ALIVE"
     }
 
@@ -48,3 +53,30 @@ def get_nodes():
         "count": len(registered_nodes),
         "nodes": list(registered_nodes.values())
     }
+
+
+def monitor_nodes():
+    while True:
+        now = datetime.now()
+
+        for node_id, node in registered_nodes.items():
+            last_heartbeat = datetime.fromisoformat(
+                node["last_heartbeat"]
+            )
+
+            if (
+                now - last_heartbeat > timedelta(seconds=HEARTBEAT_TIMEOUT)
+                and node["status"] == "ALIVE"
+            ):
+                node["status"] = "DEAD"
+                print(f"DataNode failure detected: {node_id}")
+
+        time.sleep(2)
+
+
+monitor_thread = threading.Thread(
+    target=monitor_nodes,
+    daemon=True
+)
+
+monitor_thread.start()
