@@ -1,0 +1,49 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #172436;
+  background: #f1f5f9;
+}
+
+body { margin: 0; }
+main { max-width: 960px; margin: 48px auto; padding: 0 20px; }
+
+header, form, .metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+header { justify-content: space-between; }
+.metrics { margin-bottom: 20px; }
+
+.metrics > div, .panel {
+  background: white;
+  border: 1px solid #d7e1eb;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.metrics > div { flex: 1; }
+.metrics strong { display: block; font-size: 2rem; color: #075985; }
+h2 { margin-top: 0; }
+input { display: block; margin-top: 6px; }
+.table-wrap { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #e2e8f0; }
+
+button {
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #b6c6d5;
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+}
+
+button:disabled { opacity: 0.5; cursor: default; }
+a { color: #075985; }
+td button { margin-left: 12px; }
+.error { color: #b91c1c; }

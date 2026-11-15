@@ -61,9 +61,20 @@ services:
       - ./api:/app:ro
     ports:
       - "127.0.0.1:3001:3001"
-      
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    command: ["sh", "-c", "npm install && npm run dev"]
+    depends_on:
+      - api
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"      
 volumes:
   namenode-data:
   datanode1-data:
   datanode2-data:
   datanode3-data:
+  web-node-modules:
