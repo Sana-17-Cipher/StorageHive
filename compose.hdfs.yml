@@ -51,6 +51,17 @@ services:
     volumes:
       - ./hdfs/conf:/etc/storagehive-hdfs:ro
       - datanode3-data:/data/datanode
+  api:
+    image: node:24-alpine
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      NAMENODE_URL: http://namenode:9870
+    volumes:
+      - ./api:/app:ro
+    ports:
+      - "127.0.0.1:3001:3001"
+      
 volumes:
   namenode-data:
   datanode1-data:
