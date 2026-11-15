@@ -1,0 +1,58 @@
+name: storagehive-hdfs
+
+services:
+  namenode:
+    image: apache/hadoop:3.4.2-lean
+    hostname: namenode
+    user: "0:0"
+    environment:
+      HADOOP_CONF_DIR: /etc/storagehive-hdfs
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        if [ ! -f /data/namenode/current/VERSION ]; then
+          /opt/hadoop/bin/hdfs namenode -format -nonInteractive
+        fi
+        exec /opt/hadoop/bin/hdfs namenode
+    ports:
+      - "127.0.0.1:9870:9870"
+    volumes:
+      - ./hdfs/conf:/etc/storagehive-hdfs:ro
+      - namenode-data:/data/namenode
+  datanode1:
+    image: apache/hadoop:3.4.2-lean
+    hostname: datanode1
+    user: "0:0"
+    environment:
+      HADOOP_CONF_DIR: /etc/storagehive-hdfs
+    entrypoint: ["/opt/hadoop/bin/hdfs", "datanode"]
+    volumes:
+      - ./hdfs/conf:/etc/storagehive-hdfs:ro
+      - datanode1-data:/data/datanode
+
+  datanode2:
+    image: apache/hadoop:3.4.2-lean
+    hostname: datanode2
+    user: "0:0"
+    environment:
+      HADOOP_CONF_DIR: /etc/storagehive-hdfs
+    entrypoint: ["/opt/hadoop/bin/hdfs", "datanode"]
+    volumes:
+      - ./hdfs/conf:/etc/storagehive-hdfs:ro
+      - datanode2-data:/data/datanode
+
+  datanode3:
+    image: apache/hadoop:3.4.2-lean
+    hostname: datanode3
+    user: "0:0"
+    environment:
+      HADOOP_CONF_DIR: /etc/storagehive-hdfs
+    entrypoint: ["/opt/hadoop/bin/hdfs", "datanode"]
+    volumes:
+      - ./hdfs/conf:/etc/storagehive-hdfs:ro
+      - datanode3-data:/data/datanode
+volumes:
+  namenode-data:
+  datanode1-data:
+  datanode2-data:
+  datanode3-data:
