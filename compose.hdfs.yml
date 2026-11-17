@@ -58,8 +58,10 @@ services:
       - ./hdfs/conf:/etc/storagehive-hdfs:ro
       - datanode3-data:/data/datanode
   api:
-    image: node:24-alpine
+    build: ./api
     depends_on:
+      db:
+        condition: service_healthy
       namenode:
         condition: service_healthy
     healthcheck:
@@ -71,8 +73,11 @@ services:
     command: ["node", "server.mjs"]
     environment:
       NAMENODE_URL: http://namenode:9870
-    volumes:
-      - ./api:/app:ro
+      PGHOST: db
+      PGDATABASE: storagehive
+      PGUSER: storagehive
+      PGPASSWORD: ${STORAGEHIVE_DB_PASSWORD:-storagehive_local_dev}
+   
     ports:
       - "127.0.0.1:3001:3001"
   web:
@@ -97,6 +102,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./db/001-users.sql:/docker-entrypoint-initdb.d/001-users.sql:ro
+      - ./db/002-sessions.sql:/docker-entrypoint-initdb.d/002-sessions.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "storagehive", "-d", "storagehive"]
       interval: 5s

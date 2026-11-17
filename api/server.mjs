@@ -1,9 +1,11 @@
 import { createServer, request as httpRequest } from 'node:http'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { currentUser, handleAuth } from './auth.mjs'
+
 
 const nameNodeUrl = process.env.NAMENODE_URL ?? 'http://namenode:9870'
-const demoDirectory = '/demo'
+
 const maxUploadBytes = 10 * 1024 * 1024
 
 function sendJson(response, status, body) {
@@ -56,9 +58,8 @@ const routes = {
       deadDataNodes: metrics.NumDeadDataNodes,
     }
   },
-
-  '/api/files': async () => {
-    const response = await callHadoop(webHdfsUrl(demoDirectory, 'LISTSTATUS'))
+  '/api/files': async (directory) => {
+    const response = await callHadoop(webHdfsUrl(directory, 'LISTSTATUS'))
 
     if (response.status === 404) {
       const error = await response.json().catch(() => null)
@@ -126,16 +127,14 @@ function uploadToDataNode(url, body) {
     upload.end(body)
   })
 }
-
-async function handleFile(request, response, filename) {
+async function handleFile(request, response, filename, directory) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._ -]{0,127}$/.test(filename)) {
     return sendJson(response, 400, {
       error: 'Use a filename that starts with a letter or number and contains only letters, numbers, spaces, dots, underscores, or hyphens',
     })
   }
 
-  const path = `${demoDirectory}/${encodeURIComponent(filename)}`
-
+    const path = `${directory}/${encodeURIComponent(filename)}`
   if (request.method === 'PUT') {
     const chunks = []
     let size = 0
@@ -151,14 +150,14 @@ async function handleFile(request, response, filename) {
       chunks.push(chunk)
     }
 
-    const directory = await callHadoop(webHdfsUrl(demoDirectory, 'MKDIRS'), {
+        const folder = await callHadoop(webHdfsUrl(directory, 'MKDIRS'), {
       method: 'PUT',
     })
 
-    if (!directory.ok) return sendHadoopError(response, directory)
+    if (!folder.ok) return sendHadoopError(response, folder)
 
-    if (!(await directory.json()).boolean) {
-      throw new Error('Could not create the HDFS demo directory')
+    if (!(await folder.json()).boolean) {
+      throw new Error('Could not create the HDFS account directory')
     }
 
     const destination = await callHadoop(
@@ -221,8 +220,22 @@ async function handleFile(request, response, filename) {
 createServer(async (request, response) => {
   const { pathname } = new URL(request.url, 'http://localhost')
   const filePrefix = '/api/files/'
+      if (pathname.startsWith('/api/auth/')) {
+      return await handleAuth(request, response, pathname, sendJson)
+    }
+
+    let directory
+    if (pathname === '/api/files' || pathname.startsWith(filePrefix)) {
+      response.setHeader('Cache-Control', 'no-store')
+      const user = await currentUser(request)
+      if (!user) {
+        return sendJson(response, 401, { error: 'Sign in first' })
+      }
+      directory = `/accounts/${user.storage_key}`
+    }
 
   try {
+
     if (pathname.startsWith(filePrefix)) {
       let filename
 
@@ -232,7 +245,7 @@ createServer(async (request, response) => {
         return sendJson(response, 400, { error: 'Invalid filename encoding' })
       }
 
-      return await handleFile(request, response, filename)
+      return await handleFile(request, response, filename, directory)
     }
 
     if (!Object.hasOwn(routes, pathname)) {
@@ -244,7 +257,7 @@ createServer(async (request, response) => {
       return sendJson(response, 405, { error: 'Only GET is supported' })
     }
 
-    const body = await routes[pathname]()
+    const body = await routes[pathname](directory)
     sendJson(response, 200, body)
   } catch (error) {
     console.error(error)
