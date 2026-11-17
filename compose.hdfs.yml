@@ -86,10 +86,26 @@ services:
       - ./web:/app
       - web-node-modules:/app/node_modules
     ports:
-      - "127.0.0.1:5173:5173"      
+      - "127.0.0.1:5173:5173"  
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: storagehive
+      POSTGRES_USER: storagehive
+      POSTGRES_PASSWORD: ${STORAGEHIVE_DB_PASSWORD:-storagehive_local_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/001-users.sql:/docker-entrypoint-initdb.d/001-users.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "storagehive", "-d", "storagehive"]
+      interval: 5s
+      timeout: 5s
+      retries: 12    
 volumes:
   namenode-data:
   datanode1-data:
   datanode2-data:
   datanode3-data:
   web-node-modules:
+  postgres-data:
