@@ -32,6 +32,31 @@ export default function App() {
     refresh().catch((error) => setError(error.message))
   }, [])
 
+  useEffect(() => {
+  let active = true
+  let timer
+
+  async function pollCluster() {
+    try {
+      const status = await api('/api/cluster', {
+        signal: AbortSignal.timeout(4000),
+      })
+      if (active) setCluster(status)
+    } catch {
+      if (active) setCluster(null)
+    } finally {
+      if (active) timer = setTimeout(pollCluster, 5000)
+    }
+  }
+
+  timer = setTimeout(pollCluster, 5000)
+
+  return () => {
+    active = false
+    clearTimeout(timer)
+  }
+}, [])
+
   async function run(action, successMessage = '') {
     setBusy(true)
     setError('')
