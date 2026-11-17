@@ -19,6 +19,12 @@ services:
     volumes:
       - ./hdfs/conf:/etc/storagehive-hdfs:ro
       - namenode-data:/data/namenode
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/hdfs dfsadmin -safemode get | grep -q 'Safe mode is OFF'"]
+      interval: 10s
+      timeout: 8s
+      retries: 12
+      start_period: 30s
   datanode1:
     image: apache/hadoop:3.4.2-lean
     hostname: datanode1
@@ -53,6 +59,14 @@ services:
       - datanode3-data:/data/datanode
   api:
     image: node:24-alpine
+    depends_on:
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/cluster').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 6s
+      retries: 12
     working_dir: /app
     command: ["node", "server.mjs"]
     environment:
@@ -66,7 +80,8 @@ services:
     working_dir: /app
     command: ["sh", "-c", "npm install && npm run dev"]
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - ./web:/app
       - web-node-modules:/app/node_modules

@@ -3,25 +3,45 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 const nameNodeUrl = process.env.NAMENODE_URL ?? 'http://namenode:9870'
+const demoDirectory = '/demo'
+const maxUploadBytes = 10 * 1024 * 1024
 
-async function readHadoopJson(path) {
-  const response = await fetch(new URL(path, nameNodeUrl), {
-    signal: AbortSignal.timeout(5000),
+function sendJson(response, status, body) {
+  response.writeHead(status, { 'Content-Type': 'application/json' })
+  response.end(JSON.stringify(body))
+}
+
+function webHdfsUrl(path, operation, options = {}) {
+  const url = new URL(`/webhdfs/v1${path}`, nameNodeUrl)
+  url.search = new URLSearchParams({
+    op: operation,
+    'user.name': 'root',
+    ...options,
+  }).toString()
+  return url
+}
+
+function callHadoop(url, options = {}) {
+  return fetch(url, {
+    signal: AbortSignal.timeout(30_000),
+    ...options,
   })
-
-  if (!response.ok) {
-    throw new Error(`NameNode returned HTTP ${response.status}`)
-  }
-
-  return response.json()
 }
 
 const routes = {
   '/api/cluster': async () => {
-    const query = new URLSearchParams({
-      qry: 'Hadoop:service=NameNode,name=FSNamesystemState',
+    const url = new URL('/jmx', nameNodeUrl)
+    url.searchParams.set('qry', 'Hadoop:service=NameNode,name=FSNamesystemState')
+
+    const response = await callHadoop(url, {
+      signal: AbortSignal.timeout(5000),
     })
-    const { beans } = await readHadoopJson(`/jmx?${query}`)
+
+    if (!response.ok) {
+      throw new Error(`NameNode metrics returned HTTP ${response.status}`)
+    }
+
+    const { beans } = await response.json()
     const metrics = beans?.[0]
 
     if (
@@ -38,9 +58,21 @@ const routes = {
   },
 
   '/api/files': async () => {
-    const data = await readHadoopJson(
-      '/webhdfs/v1/demo?op=LISTSTATUS&user.name=root'
-    )
+    const response = await callHadoop(webHdfsUrl(demoDirectory, 'LISTSTATUS'))
+
+    if (response.status === 404) {
+      const error = await response.json().catch(() => null)
+
+      if (error?.RemoteException?.exception === 'FileNotFoundException') {
+        return []
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`WebHDFS LISTSTATUS returned HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
 
     return data.FileStatuses.FileStatus.map((entry) => ({
       name: entry.pathSuffix,
@@ -49,27 +81,6 @@ const routes = {
       replication: entry.replication,
     }))
   },
-}
-
-function sendJson(response, status, body) {
-  response.writeHead(status, { 'Content-Type': 'application/json' })
-  response.end(JSON.stringify(body))
-}
-
-const maxUploadBytes = 10 * 1024 * 1024
-
-function webHdfsUrl(path, operation, options = {}) {
-  const url = new URL(`/webhdfs/v1${path}`, nameNodeUrl)
-  url.search = new URLSearchParams({
-    op: operation,
-    'user.name': 'root',
-    ...options,
-  }).toString()
-  return url
-}
-
-function callHadoop(url, options = {}) {
-  return fetch(url, { signal: AbortSignal.timeout(30_000), ...options })
 }
 
 async function sendHadoopError(response, upstream) {
@@ -123,7 +134,7 @@ async function handleFile(request, response, filename) {
     })
   }
 
-  const path = `/demo/${encodeURIComponent(filename)}`
+  const path = `${demoDirectory}/${encodeURIComponent(filename)}`
 
   if (request.method === 'PUT') {
     const chunks = []
@@ -131,17 +142,21 @@ async function handleFile(request, response, filename) {
 
     for await (const chunk of request.iterator({ destroyOnReturn: false })) {
       size += chunk.length
+
       if (size > maxUploadBytes) {
         response.setHeader('Connection', 'close')
         return sendJson(response, 413, { error: 'Maximum upload size is 10 MiB' })
       }
+
       chunks.push(chunk)
     }
 
-    const directory = await callHadoop(webHdfsUrl('/demo', 'MKDIRS'), {
+    const directory = await callHadoop(webHdfsUrl(demoDirectory, 'MKDIRS'), {
       method: 'PUT',
     })
+
     if (!directory.ok) return sendHadoopError(response, directory)
+
     if (!(await directory.json()).boolean) {
       throw new Error('Could not create the HDFS demo directory')
     }
@@ -150,14 +165,22 @@ async function handleFile(request, response, filename) {
       webHdfsUrl(path, 'CREATE', { overwrite: 'false' }),
       { method: 'PUT', redirect: 'manual' }
     )
-    const location = destination.headers.get('location')
-    if (destination.status !== 307) return sendHadoopError(response, destination)
-    if (!location) throw new Error('NameNode did not return a DataNode address')
 
-        const uploaded = await uploadToDataNode(
+    if (destination.status !== 307) {
+      return sendHadoopError(response, destination)
+    }
+
+    const location = destination.headers.get('location')
+
+    if (!location) {
+      throw new Error('NameNode did not return a DataNode address')
+    }
+
+    const uploaded = await uploadToDataNode(
       new URL(location, nameNodeUrl),
       Buffer.concat(chunks, size)
     )
+
     if (!uploaded.ok) return sendHadoopError(response, uploaded)
 
     return sendJson(response, 201, { name: filename, sizeBytes: size })
@@ -165,12 +188,14 @@ async function handleFile(request, response, filename) {
 
   if (request.method === 'GET') {
     const file = await callHadoop(webHdfsUrl(path, 'OPEN'))
+
     if (!file.ok) return sendHadoopError(response, file)
 
     response.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${filename}"`,
     })
+
     return pipeline(Readable.fromWeb(file.body), response)
   }
 
@@ -179,6 +204,7 @@ async function handleFile(request, response, filename) {
       webHdfsUrl(path, 'DELETE', { recursive: 'false' }),
       { method: 'DELETE' }
     )
+
     if (!deleted.ok) return sendHadoopError(response, deleted)
 
     if (!(await deleted.json()).boolean) {
@@ -191,6 +217,7 @@ async function handleFile(request, response, filename) {
   response.setHeader('Allow', 'GET, PUT, DELETE')
   return sendJson(response, 405, { error: 'Method not supported' })
 }
+
 createServer(async (request, response) => {
   const { pathname } = new URL(request.url, 'http://localhost')
   const filePrefix = '/api/files/'
@@ -198,11 +225,13 @@ createServer(async (request, response) => {
   try {
     if (pathname.startsWith(filePrefix)) {
       let filename
+
       try {
         filename = decodeURIComponent(pathname.slice(filePrefix.length))
       } catch {
         return sendJson(response, 400, { error: 'Invalid filename encoding' })
       }
+
       return await handleFile(request, response, filename)
     }
 
@@ -219,10 +248,12 @@ createServer(async (request, response) => {
     sendJson(response, 200, body)
   } catch (error) {
     console.error(error)
+
     if (response.destroyed || response.headersSent) {
       response.destroy()
       return
     }
+
     sendJson(response, 502, { error: 'Could not complete the Hadoop request' })
   }
 }).listen(3001, '0.0.0.0', () => {
